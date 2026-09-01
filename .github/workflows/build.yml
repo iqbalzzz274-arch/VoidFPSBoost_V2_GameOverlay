@@ -1,0 +1,41 @@
+name: Build Void FPS Boost APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Extract Void FPS Boost project
+        run: |
+          unzip -o VoidFPSBoost_V2_GameOverlay.zip
+          ls -la
+
+      - name: Build APK
+        run: |
+          gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Void-FPS-Boost-APK
+          path: app/build/outputs/apk/debug/*.apk
