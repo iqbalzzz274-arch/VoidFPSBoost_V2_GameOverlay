@@ -23,18 +23,75 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.9'
 
       - name: Find ZIP
         run: |
           ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
           if [ -z "$ZIP" ]; then
             echo "ZIP project tidak dijumpai!"
             exit 1
           fi
+
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
           echo "Jumpa: $ZIP"
 
+      - name: Extract Project
+        run: |
+          rm -rf project
+          mkdir project
+          unzip -o "$ZIP" -d project
+
+      - name: Find Android Project
+        run: |
+          DIR=$(find project -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -print -quit | xargs -r dirname)
+
+          if [ -z "$DIR" ]; then
+            echo "Android project tidak dijumpai!"
+            find project -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$DIR" >> "$GITHUB_ENV"
+          echo "Project: $DIR"
+
+      - name: Check Project
+        run: |
+          cd "$PROJECT_DIR"
+          pwd
+          ls -la
+
+      - name: Prepare Gradle
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+          fi
+
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Find APK
+        run: |
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Void-FPS-Boost-APK
+          path: "project/**/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
       - name: Extract Project
         run: |
           rm -rf project
