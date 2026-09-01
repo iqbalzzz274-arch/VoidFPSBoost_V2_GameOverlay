@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,22 +23,70 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Install Gradle 8.9
+      - name: Find Android Project
         shell: bash
         run: |
-          set -e
+          echo "Searching Android project..."
 
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          if [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+            exit 0
+          fi
 
-          sudo mkdir -p /opt/gradle
+          FOUND=$(find . -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -not -path "./.git/*" | head -n 1)
 
-          sudo unzip -q gradle-8.9-bin.zip -d /opt/gradle
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: Android Gradle project not found."
+            find . -maxdepth 4 -type f | sort
+            exit 1
+          fi
 
-          echo "/opt/gradle/gradle-8.9/bin" >> "$GITHUB_PATH"
+          PROJECT_DIR=$(dirname "$FOUND")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          gradle --version
+      - name: Check Project
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+          echo "Project directory:"
+          pwd
+          echo "Files:"
+          ls -la
 
-      - name: Find
+      - name: Build APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Find APK
+        shell: bash
+        run: |
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not found."
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/output"
+          cp "$APK" "$GITHUB_WORKSPACE/output/VoidFPSBoost.apk"
+
+          echo "APK found: $APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoidFPSBoost-APK
+          path: output/VoidFPSBoost.apk
+          if-no-files-found: error
