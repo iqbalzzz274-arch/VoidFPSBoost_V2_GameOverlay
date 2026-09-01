@@ -26,41 +26,78 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Extract Project ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP project tidak dijumpai."
+            ls -la
+            exit 1
+          fi
+
+          echo "ZIP dijumpai: $ZIP_FILE"
+
+          mkdir -p extracted
+          unzip -q "$ZIP_FILE" -d extracted
+
+          echo "ZIP berjaya diextract."
+          find extracted -maxdepth 4 -type f | head -100
+
       - name: Find Android Project
         shell: bash
         run: |
-          echo "Searching Android project..."
+          set -e
 
-          if [ -f "settings.gradle" ] || [ -f "settings.gradle.kts" ]; then
-            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          FOUND=$(find . -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            -not -path "./.git/*" | head -n 1)
+          FOUND=$(find extracted -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -not -path "*/.git/*" | head -n 1)
 
           if [ -z "$FOUND" ]; then
-            echo "ERROR: Android Gradle project not found."
-            find . -maxdepth 4 -type f | sort
+            echo "ERROR: Android Gradle project tidak dijumpai selepas extract."
+            echo ""
+            echo "Struktur fail:"
+            find extracted -maxdepth 5 -type f | sort
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$FOUND")
+
+          echo "Android project dijumpai:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Check Project
+      - name: Check Android Project
         shell: bash
         run: |
+          set -e
+
           cd "$PROJECT_DIR"
-          echo "Project directory:"
+
+          echo "Project:"
           pwd
+
+          echo ""
           echo "Files:"
           ls -la
+
+          if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle tidak dijumpai."
+            exit 1
+          fi
 
       - name: Build APK
         shell: bash
         run: |
+          set -e
+
           cd "$PROJECT_DIR"
+
+          echo "Building APK..."
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
@@ -72,17 +109,22 @@ jobs:
       - name: Find APK
         shell: bash
         run: |
+          set -e
+
+          echo "Mencari APK..."
+
           APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: APK not found."
+            echo "ERROR: APK tidak berjaya dihasilkan."
             exit 1
           fi
 
-          mkdir -p "$GITHUB_WORKSPACE/output"
-          cp "$APK" "$GITHUB_WORKSPACE/output/VoidFPSBoost.apk"
+          echo "APK dijumpai:"
+          echo "$APK"
 
-          echo "APK found: $APK"
+          mkdir -p output
+          cp "$APK" output/VoidFPSBoost.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
