@@ -1,4 +1,4 @@
-name: Build APK
+name: Void FPS Boost Build
 
 on:
   push:
@@ -15,26 +15,114 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.7
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+      - name: Install Gradle 8.7
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle-8.7-bin.zip -d "$HOME"
+          echo "$HOME/gradle-8.7/bin" >> "$GITHUB_PATH"
+          gradle --version
+
+      - name: Find Project ZIP
+        run: |
+          ZIP_FILE=$(find . -maxdepth 2 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP project tak dijumpai."
+            exit 1
+          fi
+
+          echo "ZIP dijumpai: $ZIP_FILE"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+      - name: Extract Android Project
+        run: |
+          rm -rf extracted
+          mkdir -p extracted
+
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "=== Kandungan ZIP ==="
+          find extracted -maxdepth 4 -type f | head -100
 
       - name: Find Android Project
-        shell: bash
         run: |
-          echo "=== Searching for Gradle project ==="
-
-          SETTINGS=$(find . -type f \( \
+          PROJECT_DIR=$(find extracted -type f \( \
             -name "settings.gradle" -o \
             -name "settings.gradle.kts" \
-          \) -print -quit)
+          \) -print -quit | xargs -r dirname)
 
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: settings.gradle / settings.gradle.kts tak dijumpai."
+            echo ""
+            echo "Struktur fail:"
+            find extracted -maxdepth 5 -type f
+            exit 1
+          fi
+
+          echo "Android project dijumpai:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Check Project
+        run: |
+          cd "$PROJECT_DIR"
+
+          echo "=== PROJECT ==="
+          pwd
+
+          echo "=== FILES ==="
+          ls -la
+
+          echo "=== GRADLE FILES ==="
+          find . -maxdepth 2 -type f \
+            \( -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+            -o -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \)
+
+      - name: Prepare Gradle
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            echo "Menggunakan Gradle Wrapper."
+          else
+            echo "Gradle Wrapper tak ada."
+            echo "Menggunakan Gradle 8.7."
+          fi
+
+      - name: Build Debug APK
+        run: |
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
+
+      - name: Find APK
+        run: |
+          echo "=== APK ==="
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Void-FPS-Boost-APK
+          path: |
+            extracted/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           if [ -z "$SETTINGS" ]; then
             echo "ERROR: settings.gradle not found!"
             echo "=== Project files ==="
