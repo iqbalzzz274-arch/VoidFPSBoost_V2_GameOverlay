@@ -25,20 +25,52 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Check Project
+      - name: Find Android Project
+        shell: bash
         run: |
-          echo "=== PROJECT ==="
-          ls -la
-          echo "=== FILES ==="
-          find . -maxdepth 3 -type f | sort
+          echo "=== Searching for Gradle project ==="
+
+          SETTINGS=$(find . -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle not found!"
+            echo "=== Project files ==="
+            find . -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Gradle project found:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Show Project Structure
+        run: |
+          echo "=== Project Directory ==="
+          echo "$PROJECT_DIR"
+
+          echo "=== Project Files ==="
+          find "$PROJECT_DIR" -maxdepth 3 -type f | sort
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "Building from:"
+          pwd
+          echo "=== Gradle files ==="
+          ls -la
+
+          gradle assembleDebug --stacktrace
 
       - name: Find APK
         run: |
           echo "=== APK FOUND ==="
-          find . -type f -name "*.apk" -print
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
