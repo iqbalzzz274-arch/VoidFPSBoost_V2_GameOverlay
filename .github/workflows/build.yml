@@ -18,11 +18,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -32,9 +31,10 @@ jobs:
       - name: Show Project Files
         shell: bash
         run: |
-          echo "===== ROOT ====="
+          echo "===== CURRENT DIRECTORY ====="
           pwd
-          echo "===== FILES ====="
+
+          echo "===== ROOT FILES ====="
           find . -maxdepth 3 -type f \
             ! -path './.git/*' \
             | sort | head -300
@@ -44,81 +44,97 @@ jobs:
         run: |
           mkdir -p extracted
 
-          found_zip=""
+          FOUND_ZIP=""
 
-          for zip in ./*.zip; do
-            if [ -f "$zip" ]; then
-              found_zip="$zip"
+          for ZIP_FILE in ./*.zip; do
+            if [ -f "$ZIP_FILE" ]; then
+              FOUND_ZIP="$ZIP_FILE"
               break
             fi
           done
 
-          if [ -n "$found_zip" ]; then
-            echo "Found ZIP: $found_zip"
-            unzip -o "$found_zip" -d extracted
+          if [ -n "$FOUND_ZIP" ]; then
+            echo "ZIP FOUND:"
+            echo "$FOUND_ZIP"
+
+            unzip -o "$FOUND_ZIP" -d extracted
+
+            echo "===== EXTRACTED FILES ====="
+            find extracted -maxdepth 4 -type f \
+              | sort | head -300
           else
-            echo "No ZIP found. Using repository files directly."
+            echo "No ZIP found."
           fi
 
       - name: Find Android Project
         id: find_project
         shell: bash
         run: |
-          echo "Searching for Gradle Android project..."
+          echo "===== SEARCHING FOR ANDROID PROJECT ====="
 
           PROJECT_DIR=""
 
-          # Search settings.gradle / settings.gradle.kts
-          while IFS= read -r settings_file; do
-            dir="$(dirname "$settings_file")"
+          # Search for settings.gradle / settings.gradle.kts
+          while IFS= read -r SETTINGS_FILE; do
+            DIR="$(dirname "$SETTINGS_FILE")"
 
-            if [ -f "$dir/settings.gradle" ] || \
-               [ -f "$dir/settings.gradle.kts" ]; then
+            if [ -f "$DIR/settings.gradle" ] || \
+               [ -f "$DIR/settings.gradle.kts" ]; then
 
-              if [ -f "$dir/build.gradle" ] || \
-                 [ -f "$dir/build.gradle.kts" ]; then
+              if [ -f "$DIR/build.gradle" ] || \
+                 [ -f "$DIR/build.gradle.kts" ]; then
 
-                PROJECT_DIR="$dir"
+                PROJECT_DIR="$DIR"
                 break
               fi
             fi
           done < <(
-            find . -type f \
+            find . \
+              -type f \
               \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
               ! -path './.git/*' \
-              ! -path './extracted/.gradle/*' \
+              ! -path '*/.gradle/*' \
               | sort
           )
 
-          # If settings.gradle wasn't found, search for app/build.gradle
+          # If settings.gradle wasn't found,
+          # search for app/build.gradle
           if [ -z "$PROJECT_DIR" ]; then
-            while IFS= read -r app_gradle; do
-              dir="$(dirname "$(dirname "$app_gradle")")"
+            while IFS= read -r APP_GRADLE; do
+              DIR="$(dirname "$(dirname "$APP_GRADLE")")"
 
-              if [ -f "$dir/build.gradle" ] || \
-                 [ -f "$dir/build.gradle.kts" ]; then
+              if [ -f "$DIR/build.gradle" ] || \
+                 [ -f "$DIR/build.gradle.kts" ]; then
 
-                PROJECT_DIR="$dir"
+                PROJECT_DIR="$DIR"
                 break
               fi
             done < <(
-              find . -type f \
-                \( -path "*/app/build.gradle" -o -path "*/app/build.gradle.kts" \) \
+              find . \
+                -type f \
+                \( -path "*/app/build.gradle" \
+                -o -path "*/app/build.gradle.kts" \) \
                 ! -path './.git/*' \
+                ! -path '*/.gradle/*' \
                 | sort
             )
           fi
 
           if [ -z "$PROJECT_DIR" ]; then
-            echo "::error::Android Gradle project was not found."
-            echo "Available Gradle files:"
-            find . -type f \
+            echo "::error::Android Gradle project was NOT found."
+
+            echo "===== GRADLE FILES FOUND ====="
+
+            find . \
+              -type f \
               \( -name "settings.gradle" \
               -o -name "settings.gradle.kts" \
               -o -name "build.gradle" \
               -o -name "build.gradle.kts" \) \
               ! -path './.git/*' \
+              ! -path '*/.gradle/*' \
               | sort
+
             exit 1
           fi
 
@@ -131,7 +147,7 @@ jobs:
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Check Gradle Version
+      - name: Check Gradle 8.9
         shell: bash
         run: |
           gradle --version
@@ -143,7 +159,7 @@ jobs:
         run: |
           cd "$PROJECT_DIR"
 
-          echo "Building project:"
+          echo "===== BUILD DIRECTORY ====="
           pwd
 
           echo "===== PROJECT FILES ====="
@@ -151,15 +167,25 @@ jobs:
             ! -path './.gradle/*' \
             | sort | head -300
 
-          echo "===== BUILD ====="
+          echo "===== BUILD APK ====="
 
           if [ -f "./gradlew" ]; then
+            echo "Using Gradle Wrapper."
+
             chmod +x ./gradlew
-            ./gradlew --no-daemon --stacktrace assembleDebug
+
+            ./gradlew \
+              --no-daemon \
+              --stacktrace \
+              assembleDebug
           else
-            echo "gradlew not found."
+            echo "Gradle Wrapper not found."
             echo "Using installed Gradle 8.9."
-            gradle --no-daemon --stacktrace assembleDebug
+
+            gradle \
+              --no-daemon \
+              --stacktrace \
+              assembleDebug
           fi
 
       - name: Find APK
@@ -168,29 +194,41 @@ jobs:
         env:
           PROJECT_DIR: ${{ steps.find_project.outputs.project_dir }}
         run: |
-          echo "Searching for APK..."
+          echo "===== SEARCHING FOR APK ====="
 
           APK=""
 
-          APK="$(find "$PROJECT_DIR" -type f \
+          APK="$(find "$PROJECT_DIR" \
+            -type f \
             -path "*/build/outputs/apk/debug/*.apk" \
             ! -path "*/build/intermediates/*" \
             | head -n 1)"
 
           if [ -z "$APK" ]; then
-            APK="$(find "$PROJECT_DIR" -type f \
+            APK="$(find "$PROJECT_DIR" \
+              -type f \
               -name "*.apk" \
               ! -path "*/build/intermediates/*" \
               | head -n 1)"
           fi
 
           if [ -z "$APK" ]; then
-            echo "::error::APK was not found."
+            echo "::error::APK was NOT found."
+
+            echo "===== BUILD OUTPUTS ====="
+
+            find "$PROJECT_DIR" \
+              -type f \
+              -path "*/build/*" \
+              | sort | tail -200
+
             exit 1
           fi
 
+          echo "======================================"
           echo "APK FOUND:"
           echo "$APK"
+          echo "======================================"
 
           echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
 
