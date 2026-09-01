@@ -20,25 +20,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
+        with:
+          gradle-version: '8.7'
 
       - name: Check Project
         run: |
-          echo "=== Project files ==="
+          echo "=== PROJECT ==="
           ls -la
-          echo "=== Gradle files ==="
-          find . -maxdepth 2 -type f | sort | head -100
+          echo "=== FILES ==="
+          find . -maxdepth 3 -type f | sort
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - name: Find APK
         run: |
-          echo "=== APK files ==="
+          echo "=== APK FOUND ==="
           find . -type f -name "*.apk" -print
 
       - name: Upload APK
